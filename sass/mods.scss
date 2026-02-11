@@ -1,14 +1,14 @@
-// Retro terminal hero styling
+// Retro terminal hero styling (aligned to accent)
 .hero-term {
-  background: radial-gradient(120% 120% at 10% 10%, rgba(255, 180, 60, 0.08), rgba(0, 0, 0, 0.9)),
+  background: radial-gradient(120% 120% at 10% 10%, color-mix(in srgb, var(--accent-color) 15%, transparent), rgba(0, 0, 0, 0.9)),
               #050505;
-  color: #f5c26b;
-  border: 1px solid rgba(245, 194, 107, 0.45);
+  color: color-mix(in srgb, var(--accent-color) 75%, white);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 55%, transparent);
   border-radius: 14px;
   padding: 1.5rem;
   box-shadow:
-    0 0 24px rgba(255, 184, 79, 0.25),
-    0 0 0 1px rgba(245, 194, 107, 0.35);
+    0 0 24px color-mix(in srgb, var(--accent-color) 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent-color) 35%, transparent);
   font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   position: relative;
   overflow: hidden;
@@ -18,8 +18,8 @@
   content: "";
   position: absolute;
   inset: -40%;
-  background: radial-gradient(circle at 30% 30%, rgba(255, 184, 79, 0.08), transparent 45%),
-              radial-gradient(circle at 70% 20%, rgba(255, 130, 60, 0.07), transparent 40%);
+  background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent-color) 20%, transparent), transparent 45%),
+              radial-gradient(circle at 70% 20%, color-mix(in srgb, var(--accent-color) 16%, transparent), transparent 40%);
   filter: blur(16px);
   pointer-events: none;
 }
@@ -28,19 +28,19 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
-  color: #ffd18a;
-  text-shadow: 0 0 12px rgba(255, 200, 120, 0.65);
+  color: color-mix(in srgb, var(--accent-color) 80%, white);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent-color) 45%, transparent);
 }
 
 .hero-term__screen {
   background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(245, 194, 107, 0.35);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 45%, transparent);
   border-radius: 10px;
   padding: 1rem 1.25rem;
-  color: #f5c26b;
+  color: color-mix(in srgb, var(--accent-color) 75%, white);
   text-shadow:
-    0 0 6px rgba(255, 180, 90, 0.75),
-    0 0 16px rgba(255, 140, 50, 0.25);
+    0 0 6px color-mix(in srgb, var(--accent-color) 60%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent-color) 30%, transparent);
   line-height: 1.45;
   font-size: 0.95rem;
   position: relative;
@@ -58,6 +58,6 @@
 
 .hero-term__note {
   margin-top: 0.75rem;
-  color: rgba(245, 194, 107, 0.85);
+  color: color-mix(in srgb, var(--accent-color) 65%, white);
   font-size: 0.9rem;
 }
