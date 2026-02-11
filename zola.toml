@@ -17,8 +17,6 @@ smart_punctuation = true
 github_alerts = true
 
 [extra]
-accent_color = "#627eea"
-accent_color_dark = "#93b4ff"
 show_copy_button = true
 show_reading_time = true
 show_share_button = true
