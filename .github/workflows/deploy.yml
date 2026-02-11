@@ -1,4 +1,4 @@
-name: Deploy site to GitHub Pages
+name: Deploy Zola to GitHub Pages
 
 on:
   push:
@@ -7,19 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,5 +18,10 @@ jobs:
         with:
           submodules: true
 
-      - name: Build and publish
-        uses: getzola/github-pages@v1
+      - name: Build and deploy to gh-pages
+        uses: shalzz/zola-deploy-action@v0.22.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAGES_BRANCH: gh-pages
+          # BUILD_DIR: .           # uncomment if site root is different
+          # OUT_DIR: public        # default build output
