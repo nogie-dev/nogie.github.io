@@ -16,6 +16,10 @@ taxonomies = [{ name = "tags", feed = true }]
 smart_punctuation = true
 github_alerts = true
 
+[markdown.highlighting]
+code = true
+theme = "solarized-dark"
+
 [extra]
 show_copy_button = true
 show_reading_time = true
